@@ -8,10 +8,15 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+from aliyun_project.nist_mapping import generate_nist_control_report
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "output"
 DEFAULT_COMPLIANCE = "cis_2.0_alibabacloud"
 DEFAULT_CHECKS_FILE = PROJECT_ROOT / "rules" / "checks" / "alibabacloud_all_checks.json"
+DEFAULT_NIST_MAPPING_FILE = (
+    PROJECT_ROOT / "rules" / "mappings" / "nist_800_53_rev5_alibabacloud.json"
+)
 
 
 def _load_env_file(env_path: Path) -> None:
@@ -106,6 +111,18 @@ def _latest_compliance_csv(output_dir: Path) -> Path | None:
     return candidates[0] if candidates else None
 
 
+def _latest_scan_csv(output_dir: Path) -> Path | None:
+    if not output_dir.exists():
+        return None
+
+    candidates = sorted(
+        [p for p in output_dir.glob("prowler-output-*.csv") if "_alibabacloud" not in p.stem],
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    return candidates[0] if candidates else None
+
+
 def _summarize(args: argparse.Namespace) -> int:
     csv_path = Path(args.file) if args.file else _latest_compliance_csv(args.output_dir)
     if not csv_path or not csv_path.exists():
@@ -136,6 +153,51 @@ def _summarize(args: argparse.Namespace) -> int:
             check_id = row.get("CHECKID", "-")
             desc = row.get("REQUIREMENTS_DESCRIPTION", "")
             print(f"  [{req_id}] {check_id} - {desc}")
+
+    return 0
+
+
+def _map_nist(args: argparse.Namespace) -> int:
+    csv_path = Path(args.file) if args.file else _latest_scan_csv(args.output_dir)
+    if not csv_path:
+        csv_path = _latest_compliance_csv(args.output_dir)
+
+    if not csv_path or not csv_path.exists():
+        print("No report CSV found. Run a scan first or pass --file.", file=sys.stderr)
+        return 1
+
+    mapping_file = args.mapping_file.resolve()
+    if not mapping_file.exists():
+        print(f"Mapping file not found: {mapping_file}", file=sys.stderr)
+        return 1
+
+    try:
+        result = generate_nist_control_report(
+            source_csv=csv_path,
+            mapping_file=mapping_file,
+            report_dir=args.report_dir.resolve(),
+            top=args.top,
+        )
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    print(f"Source report: {result.source_csv}")
+    print(f"NIST summary CSV: {result.summary_csv}")
+    print(f"NIST details CSV: {result.details_csv}")
+    print(f"NIST summary JSON: {result.summary_json}")
+    print(f"Rows: {result.total_rows}")
+    print(f"Mapped rows: {result.mapped_rows}")
+    print(f"Unmapped rows: {result.unmapped_rows}")
+    print(f"Mapped controls: {result.control_count}")
+    print("Status counts:")
+    for status in sorted(result.status_counts):
+        print(f"  {status}: {result.status_counts[status]}")
+
+    if result.top_failed_controls:
+        print("\nTop controls by FAIL count:")
+        for control_id, fail_count in result.top_failed_controls:
+            print(f"  {control_id}: {fail_count}")
 
     return 0
 
@@ -180,6 +242,13 @@ def _parser() -> argparse.ArgumentParser:
     summary.add_argument("--file", help="Path to a specific compliance CSV")
     summary.add_argument("--top", type=int, default=10)
 
+    nist = subparsers.add_parser("nist-map", help="Map scan findings to NIST SP 800-53 controls")
+    nist.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    nist.add_argument("--file", help="Path to a specific scan/compliance CSV")
+    nist.add_argument("--mapping-file", type=Path, default=DEFAULT_NIST_MAPPING_FILE)
+    nist.add_argument("--report-dir", type=Path, default=DEFAULT_OUTPUT_DIR / "nist")
+    nist.add_argument("--top", type=int, default=10)
+
     return parser
 
 
@@ -194,6 +263,9 @@ def main() -> int:
 
     if args.command == "summary":
         return _summarize(args)
+
+    if args.command == "nist-map":
+        return _map_nist(args)
 
     parser.print_help()
     return 1

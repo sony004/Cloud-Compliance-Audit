@@ -1,0 +1,477 @@
+{
+  "framework": "NIST SP 800-53 Rev. 5",
+  "framework_version": "rev5",
+  "provider": "alibabacloud",
+  "description": "Control mapping for Alibaba Cloud checks executed by Prowler. Mapping is intended for audit evidence grouping (not scoring).",
+  "default_evidence_keys": [
+    "CHECK_ID",
+    "CHECKID",
+    "STATUS",
+    "STATUS_EXTENDED",
+    "STATUSEXTENDED",
+    "RESOURCE_UID",
+    "RESOURCEID",
+    "RESOURCE_NAME",
+    "RESOURCENAME",
+    "REGION",
+    "TIMESTAMP",
+    "ASSESSMENTDATE"
+  ],
+  "control_catalog": {
+    "AC-2": "Account Management",
+    "AC-3": "Access Enforcement",
+    "AC-4": "Information Flow Enforcement",
+    "AC-6": "Least Privilege",
+    "AC-17": "Remote Access",
+    "AU-2": "Event Logging",
+    "AU-6": "Audit Record Review, Analysis, and Reporting",
+    "AU-9": "Protection of Audit Information",
+    "AU-11": "Audit Record Retention",
+    "AU-12": "Audit Record Generation",
+    "CA-7": "Continuous Monitoring",
+    "CM-2": "Baseline Configuration",
+    "CM-3": "Configuration Change Control",
+    "CM-6": "Configuration Settings",
+    "IA-2": "Identification and Authentication (Organizational Users)",
+    "IA-5": "Authenticator Management",
+    "IR-4": "Incident Handling",
+    "RA-5": "Vulnerability Monitoring and Scanning",
+    "SC-7": "Boundary Protection",
+    "SC-8": "Transmission Confidentiality and Integrity",
+    "SC-12": "Cryptographic Key Establishment and Management",
+    "SC-13": "Cryptographic Protection",
+    "SC-28": "Protection of Information at Rest",
+    "SI-2": "Flaw Remediation",
+    "SI-4": "System Monitoring"
+  },
+  "prefix_mappings": [
+    {
+      "prefix": "actiontrail_",
+      "primary_control": "AU-12",
+      "secondary_controls": [
+        "AU-2",
+        "AU-6"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "ActionTrail checks validate account-wide API event generation and monitoring evidence."
+    },
+    {
+      "prefix": "sls_",
+      "primary_control": "AU-6",
+      "secondary_controls": [
+        "AU-2",
+        "SI-4"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "SLS alerting checks validate audit log analysis and security event monitoring."
+    },
+    {
+      "prefix": "ram_password_policy_",
+      "primary_control": "IA-5",
+      "secondary_controls": [
+        "IA-2"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Password policy checks enforce authenticator strength and lifecycle requirements."
+    },
+    {
+      "prefix": "ram_",
+      "primary_control": "AC-2",
+      "secondary_controls": [
+        "AC-6"
+      ],
+      "mapping_strength": "partial",
+      "rationale": "RAM checks generally support account governance and least-privilege policy enforcement."
+    },
+    {
+      "prefix": "oss_bucket_",
+      "primary_control": "SC-7",
+      "secondary_controls": [
+        "AC-3"
+      ],
+      "mapping_strength": "partial",
+      "rationale": "OSS bucket security checks enforce boundary, access, and secure data transfer controls."
+    },
+    {
+      "prefix": "ecs_securitygroup_",
+      "primary_control": "SC-7",
+      "secondary_controls": [
+        "AC-17"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Security group ingress restrictions directly support network boundary and remote access controls."
+    },
+    {
+      "prefix": "ecs_",
+      "primary_control": "CM-6",
+      "secondary_controls": [
+        "SI-2"
+      ],
+      "mapping_strength": "partial",
+      "rationale": "ECS hardening checks support secure configuration and vulnerability reduction."
+    },
+    {
+      "prefix": "rds_instance_",
+      "primary_control": "CM-6",
+      "secondary_controls": [
+        "SC-13"
+      ],
+      "mapping_strength": "partial",
+      "rationale": "RDS checks primarily validate hardened database configuration and cryptographic safeguards."
+    },
+    {
+      "prefix": "securitycenter_",
+      "primary_control": "SI-4",
+      "secondary_controls": [
+        "RA-5"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Security Center checks validate endpoint monitoring and vulnerability detection coverage."
+    },
+    {
+      "prefix": "cs_kubernetes_",
+      "primary_control": "CM-6",
+      "secondary_controls": [
+        "SC-7"
+      ],
+      "mapping_strength": "partial",
+      "rationale": "Kubernetes checks validate secure baseline settings and cluster network hardening."
+    },
+    {
+      "prefix": "vpc_",
+      "primary_control": "AU-12",
+      "secondary_controls": [
+        "AU-6",
+        "SC-7"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "VPC flow logging checks support network activity visibility and boundary monitoring."
+    }
+  ],
+  "check_mappings": {
+    "actiontrail_oss_bucket_not_publicly_accessible": {
+      "primary_control": "AU-9",
+      "secondary_controls": [
+        "AC-3",
+        "SC-7"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Protecting ActionTrail storage from public access helps preserve integrity and confidentiality of audit data."
+    },
+    "ram_no_root_access_key": {
+      "primary_control": "AC-6",
+      "secondary_controls": [
+        "IA-5"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Removing root keys enforces least privilege and prevents unmanaged highly privileged authenticators."
+    },
+    "ram_policy_no_administrative_privileges": {
+      "primary_control": "AC-6",
+      "secondary_controls": [
+        "AC-3"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Checks for wildcard administrative permissions directly validate least-privilege authorization."
+    },
+    "ram_policy_attached_only_to_group_or_roles": {
+      "primary_control": "AC-2",
+      "secondary_controls": [
+        "AC-6"
+      ],
+      "mapping_strength": "partial",
+      "rationale": "Restricting direct user policy attachment supports controlled account provisioning and privilege governance."
+    },
+    "ram_rotate_access_key_90_days": {
+      "primary_control": "IA-5",
+      "secondary_controls": [
+        "AC-2"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Access key rotation enforces authenticator lifecycle management and periodic credential renewal."
+    },
+    "ram_user_console_access_unused": {
+      "primary_control": "AC-2",
+      "secondary_controls": [
+        "AC-6"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Disabling dormant console users supports account lifecycle management and reduced attack surface."
+    },
+    "ram_user_mfa_enabled_console_access": {
+      "primary_control": "IA-2",
+      "secondary_controls": [
+        "IA-5"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "MFA on privileged console access directly supports multi-factor user authentication requirements."
+    },
+    "oss_bucket_logging_enabled": {
+      "primary_control": "AU-12",
+      "secondary_controls": [
+        "AU-2"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Object storage logging enables generation of auditable events for data access operations."
+    },
+    "oss_bucket_not_publicly_accessible": {
+      "primary_control": "AC-3",
+      "secondary_controls": [
+        "SC-7"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Public access controls enforce authorization boundaries for cloud object storage."
+    },
+    "oss_bucket_secure_transport_enabled": {
+      "primary_control": "SC-8",
+      "secondary_controls": [
+        "AC-3"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "TLS-only bucket access enforces confidentiality and integrity for data in transit."
+    },
+    "ecs_attached_disk_encrypted": {
+      "primary_control": "SC-28",
+      "secondary_controls": [
+        "SC-13"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Attached disk encryption demonstrates cryptographic protection of data at rest."
+    },
+    "ecs_unattached_disk_encrypted": {
+      "primary_control": "SC-28",
+      "secondary_controls": [
+        "SC-13"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Snapshot and detached disk encryption protects residual data at rest."
+    },
+    "ecs_instance_endpoint_protection_installed": {
+      "primary_control": "SI-4",
+      "secondary_controls": [
+        "RA-5"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Endpoint protection agent deployment supports host monitoring and threat detection."
+    },
+    "ecs_instance_latest_os_patches_applied": {
+      "primary_control": "SI-2",
+      "secondary_controls": [
+        "CM-6"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Operating system patch currency directly maps to flaw remediation requirements."
+    },
+    "ecs_instance_no_legacy_network": {
+      "primary_control": "SC-7",
+      "secondary_controls": [
+        "CM-2"
+      ],
+      "mapping_strength": "partial",
+      "rationale": "Migrating from legacy networking to VPC improves enforceable boundary controls and baseline consistency."
+    },
+    "rds_instance_no_public_access_whitelist": {
+      "primary_control": "SC-7",
+      "secondary_controls": [
+        "AC-3"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Disallowing public database whitelist entries enforces restricted network boundary exposure."
+    },
+    "rds_instance_postgresql_log_connections_enabled": {
+      "primary_control": "AU-12",
+      "secondary_controls": [
+        "AU-2"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Connection logging provides evidence for database access event generation."
+    },
+    "rds_instance_postgresql_log_disconnections_enabled": {
+      "primary_control": "AU-12",
+      "secondary_controls": [
+        "AU-2"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Disconnection logging provides complete session activity records for audit trail completeness."
+    },
+    "rds_instance_postgresql_log_duration_enabled": {
+      "primary_control": "AU-12",
+      "secondary_controls": [
+        "AU-6"
+      ],
+      "mapping_strength": "partial",
+      "rationale": "Statement duration logging supports forensic analysis and anomalous behavior review."
+    },
+    "rds_instance_sql_audit_enabled": {
+      "primary_control": "AU-12",
+      "secondary_controls": [
+        "AU-6"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "SQL audit checks verify generation and analysis capability of database activity logs."
+    },
+    "rds_instance_sql_audit_retention": {
+      "primary_control": "AU-11",
+      "secondary_controls": [
+        "AU-12"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Audit retention checks provide direct evidence that audit records are preserved for required periods."
+    },
+    "rds_instance_ssl_enabled": {
+      "primary_control": "SC-8",
+      "secondary_controls": [
+        "SC-13"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Database SSL enforcement protects sensitive data integrity and confidentiality in transit."
+    },
+    "rds_instance_tde_enabled": {
+      "primary_control": "SC-28",
+      "secondary_controls": [
+        "SC-13"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Transparent data encryption enforces cryptographic protection for stored database data."
+    },
+    "rds_instance_tde_key_custom": {
+      "primary_control": "SC-12",
+      "secondary_controls": [
+        "SC-13"
+      ],
+      "mapping_strength": "partial",
+      "rationale": "Customer-managed key usage supports key establishment and lifecycle governance."
+    },
+    "securitycenter_advanced_or_enterprise_edition": {
+      "primary_control": "SI-4",
+      "secondary_controls": [
+        "RA-5"
+      ],
+      "mapping_strength": "partial",
+      "rationale": "Advanced monitoring edition indicates availability of stronger detection and monitoring capability."
+    },
+    "securitycenter_all_assets_agent_installed": {
+      "primary_control": "SI-4",
+      "secondary_controls": [
+        "CA-7"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Full agent coverage supports continuous host monitoring and telemetry completeness."
+    },
+    "securitycenter_notification_enabled_high_risk": {
+      "primary_control": "IR-4",
+      "secondary_controls": [
+        "SI-4"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "High-risk notifications support incident handling workflows and detection-to-response handoff."
+    },
+    "securitycenter_vulnerability_scan_enabled": {
+      "primary_control": "RA-5",
+      "secondary_controls": [
+        "SI-2"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Scheduled vulnerability scans directly support vulnerability monitoring and remediation prioritization."
+    },
+    "sls_logstore_retention_period": {
+      "primary_control": "AU-11",
+      "secondary_controls": [
+        "AU-12"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Log retention period checks ensure audit records are retained for required forensic windows."
+    },
+    "sls_management_console_authentication_failures_alert_enabled": {
+      "primary_control": "AU-6",
+      "secondary_controls": [
+        "IA-2",
+        "SI-4"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Failed authentication alerting supports timely detection of brute-force and credential abuse attempts."
+    },
+    "sls_management_console_signin_without_mfa_alert_enabled": {
+      "primary_control": "IA-2",
+      "secondary_controls": [
+        "AU-6",
+        "SI-4"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Alerts for console sign-ins without MFA validate monitoring controls around authentication policy violations."
+    },
+    "cs_kubernetes_cloudmonitor_enabled": {
+      "primary_control": "SI-4",
+      "secondary_controls": [
+        "CA-7"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "CloudMonitor telemetry on cluster resources supports continuous monitoring and anomaly visibility."
+    },
+    "cs_kubernetes_cluster_check_recent": {
+      "primary_control": "CA-7",
+      "secondary_controls": [
+        "CM-6"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Recency of security baseline checks indicates continuous assessment of cluster configuration state."
+    },
+    "cs_kubernetes_dashboard_disabled": {
+      "primary_control": "AC-3",
+      "secondary_controls": [
+        "CM-6"
+      ],
+      "mapping_strength": "partial",
+      "rationale": "Disabling insecure management dashboard reduces broad interactive access pathways."
+    },
+    "cs_kubernetes_eni_multiple_ip_enabled": {
+      "primary_control": "SC-7",
+      "secondary_controls": [
+        "CM-6"
+      ],
+      "mapping_strength": "partial",
+      "rationale": "Proper ENI IP management supports predictable network segmentation and policy enforcement in clusters."
+    },
+    "cs_kubernetes_log_service_enabled": {
+      "primary_control": "AU-12",
+      "secondary_controls": [
+        "AU-6"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Cluster log service integration validates generation and central analysis of security-relevant events."
+    },
+    "cs_kubernetes_network_policy_enabled": {
+      "primary_control": "AC-4",
+      "secondary_controls": [
+        "SC-7"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Network policy enforcement directly constrains pod-to-pod and namespace traffic flow."
+    },
+    "cs_kubernetes_private_cluster_enabled": {
+      "primary_control": "SC-7",
+      "secondary_controls": [
+        "AC-17"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Private control-plane access limits externally reachable management interfaces."
+    },
+    "cs_kubernetes_rbac_enabled": {
+      "primary_control": "AC-3",
+      "secondary_controls": [
+        "AC-6"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "RBAC configuration validates role-based authorization and least-privilege assignment."
+    },
+    "vpc_flow_logs_enabled": {
+      "primary_control": "AU-12",
+      "secondary_controls": [
+        "AU-6",
+        "SC-7"
+      ],
+      "mapping_strength": "direct",
+      "rationale": "Flow logs provide network boundary telemetry needed for audit and detection workflows."
+    }
+  }
+}

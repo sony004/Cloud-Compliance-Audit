@@ -3,7 +3,8 @@ param(
     [string[]]$Region = @("cn-beijing"),
     [switch]$IgnoreExitCode3,
     [switch]$UseLocalChecks,
-    [string]$Image = "toniblyx/prowler:stable"
+    [string]$Image = "toniblyx/prowler:stable",
+    [switch]$SkipNistMap
 )
 
 $ErrorActionPreference = "Stop"
@@ -35,10 +36,32 @@ $dockerArgs = @(
 ) + $scanArgs
 
 & docker @dockerArgs
+$scanExitCode = $LASTEXITCODE
 
-if ($LASTEXITCODE -eq 3 -and $IgnoreExitCode3) {
+if (-not $SkipNistMap -and ($scanExitCode -eq 0 -or $scanExitCode -eq 3)) {
+    Write-Host "Running NIST SP 800-53 mapping..."
+
+    $mapArgs = @(
+        "run", "--rm",
+        "-v", "${PSScriptRoot}:/scan",
+        "-w", "/scan",
+        "-e", "PYTHONPATH=/scan/src",
+        "--entrypoint", "python",
+        $Image,
+        "-m", "aliyun_project.cli", "nist-map",
+        "--output-dir", "/scan/output",
+        "--report-dir", "/scan/output/nist"
+    )
+
+    & docker @mapArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "NIST mapping failed with exit code $LASTEXITCODE."
+    }
+}
+
+if ($scanExitCode -eq 3 -and $IgnoreExitCode3) {
     Write-Host "Ignoring prowler exit code 3 by request."
     exit 0
 }
 
-exit $LASTEXITCODE
+exit $scanExitCode

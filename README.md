@@ -1,131 +1,163 @@
-# 阿里云安全审计项目（独立版）
+# Alibaba Cloud Automated Compliance Audit (Powered by Prowler)
 
-这是一个可独立运行的阿里云审计项目，基于 Prowler。
-你可以直接在本仓库中完成扫描、规则管理与报告导出，不依赖外层目录。
+本项目基于 Prowler 的 Alibaba Cloud 检测能力，提供一个可独立运行的合规检测工作流，并新增了 **NIST SP 800-53 Rev.5 控制项映射**能力。
 
-## 这个项目现在能做什么
+当前定位：
+- 检测层：复用 Prowler checks 执行云配置与安全检测
+- 合规层：输出 CIS 等基线报告
+- 控制层：将检测结果映射为 NIST 800-53 控制项证据（不做评分）
 
-1. 按合规基线执行阿里云扫描（默认 `cis_2.0_alibabacloud`）。
-2. 使用本地可编辑检查清单执行扫描（`rules/checks/*.json`）。
-3. 导出扫描结果到本地 `output/`（CSV、HTML、JSON-OCSF）。
-4. 维护本地规则文件（`rules/compliance/alibabacloud/*.json` 与 `rules/checks/*.json`）。
-5. 通过脚本快速发起扫描（推荐 Docker 方式，避免本机 Python 依赖问题）。
+## Project Structure
 
-## 目录说明
+- `src/aliyun_project/cli.py`: 主 CLI（`scan` / `summary` / `nist-map`）
+- `src/aliyun_project/sync_rules.py`: 从 Prowler 同步 checks/compliance 规则
+- `src/aliyun_project/nist_mapping.py`: NIST 控制项映射与聚合逻辑
+- `rules/compliance/alibabacloud/*.json`: 本地合规基线规则
+- `rules/checks/*.json`: 本地检查项集合
+- `rules/mappings/nist_800_53_rev5_alibabacloud.json`: NIST 映射规则库
+- `run_scan_docker.ps1`: Docker 方式扫描
+- `run_scan.ps1`: Poetry 本地环境扫描
+- `run_sync.ps1`: 同步本地规则
+- `output/`: 扫描与报告输出目录
 
-- 合规规则：`rules/compliance/alibabacloud/*.json`
-- 检查清单：`rules/checks/alibabacloud_all_checks.json`
-- CIS 检查清单：`rules/checks/cis_2.0_alibabacloud_checks.json`
-- 扫描输出：`output/`
-- Docker 扫描脚本：`run_scan_docker.ps1`
-- Poetry 扫描脚本：`run_scan.ps1`
-- 规则同步脚本：`run_sync.ps1`
+## 1) Prepare Credentials
 
-## 快速开始（推荐：Docker）
-
-### 1) 准备凭证
-
-在项目根目录执行：
+首次运行前准备 `.env`：
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-编辑 `.env`，填入：
+填写以下内容：
 
 ```env
-ALIBABA_CLOUD_ACCESS_KEY_ID=你的AccessKeyId
-ALIBABA_CLOUD_ACCESS_KEY_SECRET=你的AccessKeySecret
-# 若使用 STS 临时凭证，取消注释并填写：
-# ALIBABA_CLOUD_SECURITY_TOKEN=你的SecurityToken
+ALIBABA_CLOUD_ACCESS_KEY_ID=<your_access_key_id>
+ALIBABA_CLOUD_ACCESS_KEY_SECRET=<your_access_key_secret>
+# Optional (STS)
+# ALIBABA_CLOUD_SECURITY_TOKEN=<your_security_token>
 ```
 
-### 2) 执行默认 CIS 扫描
+## 2) Run Scan
+
+### Option A: Docker (Recommended for quick start)
 
 ```powershell
 .\run_scan_docker.ps1
 ```
 
-### 3) 查看结果
+`run_scan_docker.ps1` now performs two steps by default:
+- Run Prowler scan
+- Run `nist-map` automatically and write mapped reports to `output/nist/`
 
-结果会写到本地 `output/`，常见文件：
-
-- `output/prowler-output-<account>-<time>.csv`
-- `output/prowler-output-<account>-<time>.html`
-- `output/prowler-output-<account>-<time>.ocsf.json`
-- `output/compliance/*_cis_2.0_alibabacloud.csv`
-
-## 常用操作（Docker）
-
-### 指定区域
+常用参数：
 
 ```powershell
+# 指定区域
 .\run_scan_docker.ps1 -Region cn-beijing,cn-shanghai
-```
 
-### 指定合规基线
-
-```powershell
+# 指定合规基线
 .\run_scan_docker.ps1 -Compliance cis_2.0_alibabacloud
-```
 
-### 使用本地 checks 文件扫描
-
-```powershell
+# 使用本地 checks 文件
 .\run_scan_docker.ps1 -UseLocalChecks
-```
 
-### 忽略退出码 3（有失败项但流程不中断）
-
-```powershell
+# 忽略 Prowler finding 退出码 3
 .\run_scan_docker.ps1 -IgnoreExitCode3
-```
 
-### 指定镜像
-
-```powershell
+# 指定镜像
 .\run_scan_docker.ps1 -Image toniblyx/prowler:stable
+
+# 仅扫描，跳过 NIST 映射
+.\run_scan_docker.ps1 -SkipNistMap
 ```
 
-## Poetry 方式（可选）
-
-如果你希望在本机 Python 环境运行，可用：
+### Option B: Poetry Local Environment
 
 ```powershell
 py -m poetry install
 .\run_scan.ps1
 ```
 
-说明：Windows 下可能因依赖路径过长导致安装失败，因此优先建议 Docker 方式。
+## 3) Summarize Compliance Report
 
-## 规则维护与同步
+```powershell
+aliyun-audit summary
+```
 
-项目内规则可直接编辑：
+指定文件：
 
-- `rules/checks/alibabacloud_all_checks.json`
-- `rules/checks/cis_2.0_alibabacloud_checks.json`
-- `rules/compliance/alibabacloud/*.json`
+```powershell
+aliyun-audit summary --file output/compliance/<your_file>.csv --top 10
+```
 
-同步规则（Poetry）：
+## 4) Map Findings to NIST SP 800-53 (Rev.5)
+
+新增命令：`nist-map`
+
+如果你使用 `.\run_scan_docker.ps1`，该命令会在扫描后自动执行；本节命令适用于手动单独执行映射。
+
+功能：
+- 读取扫描 CSV（优先最新 `output/prowler-output-*.csv`）
+- 按 `CHECK_ID/CHECKID` 匹配映射规则
+- 生成控制项视角报告（摘要 + 明细 + JSON）
+
+直接运行：
+
+```powershell
+aliyun-audit nist-map
+```
+
+指定输入文件：
+
+```powershell
+aliyun-audit nist-map --file output/prowler-output-<account>-<time>.csv
+```
+
+指定映射规则文件和输出目录：
+
+```powershell
+aliyun-audit nist-map `
+  --mapping-file rules/mappings/nist_800_53_rev5_alibabacloud.json `
+  --report-dir output/nist
+```
+
+输出文件：
+- `output/nist/*_nist80053_control_summary.csv`
+- `output/nist/*_nist80053_control_details.csv`
+- `output/nist/*_nist80053_control_summary.json`
+
+说明：
+- 当前仅实现控制项映射与证据聚合，不包含风险评分模型
+- 映射规则可在 `rules/mappings/nist_800_53_rev5_alibabacloud.json` 持续扩展
+
+## 5) Sync Local Rules from Prowler
 
 ```powershell
 .\run_sync.ps1
 ```
 
-可选：从本地 Prowler 源码目录同步：
+指定本地 Prowler 源码目录：
 
 ```powershell
 .\run_sync.ps1 -SourceRoot "E:\path\to\prowler"
 ```
 
-## 输出解读建议
+同步后将更新：
+- `rules/compliance/alibabacloud/*.json`
+- `rules/checks/alibabacloud_all_checks.json`
+- `rules/checks/cis_2.0_alibabacloud_checks.json`
 
-1. 优先处理 `Critical` 和 `High`。
-2. 再按服务维度集中处理（例如 ActionTrail、SLS、Security Center）。
-3. 以 `output/compliance/*_cis_2.0_alibabacloud.csv` 作为整改跟踪主表。
+## 6) Typical Output Files
 
-## 注意事项
+- `output/prowler-output-<account>-<time>.csv`
+- `output/prowler-output-<account>-<time>.html`
+- `output/prowler-output-<account>-<time>.ocsf.json`
+- `output/compliance/*_cis_2.0_alibabacloud.csv`
+- `output/nist/*_nist80053_control_summary.csv`
+- `output/nist/*_nist80053_control_details.csv`
 
-1. `.env` 仅用于本地，不应提交到仓库。
-2. 建议使用 RAM 子账号最小权限访问，不建议长期使用主账号密钥。
-3. Docker 需先确保 `docker version` 正常，且 Docker Desktop 已运行。
+## Notes
+
+- 若 `scan` 报缺少凭据，请先检查 `.env` 是否存在且变量名正确
+- 若使用 Poetry，请确认 `py -m poetry` 可用
+- 若使用 Docker，请确认 `docker version` 正常
