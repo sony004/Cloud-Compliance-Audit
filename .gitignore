@@ -1,0 +1,13 @@
+﻿# Python
+__pycache__/
+*.pyc
+
+# Poetry
+.venv/
+poetry.lock
+
+# Env
+.env
+
+# Output
+output/

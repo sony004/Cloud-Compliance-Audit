@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "aliyun-audit-standalone"
+version = "0.2.0"
+description = "Standalone Alibaba Cloud audit project powered by Prowler"
+authors = ["Prowler Contributors <engineering@prowler.com>"]
+readme = "README.md"
+packages = [{ include = "aliyun_project", from = "src" }]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.13"
+prowler = "==5.21.0"
+
+[tool.poetry.scripts]
+aliyun-audit = "aliyun_project.cli:main"
+aliyun-sync-rules = "aliyun_project.sync_rules:main"
+
+[build-system]
+requires = ["poetry-core>=2.0.0"]
+build-backend = "poetry.core.masonry.api"
