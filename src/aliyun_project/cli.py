@@ -8,6 +8,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+from aliyun_project.continuous_compliance import update_continuous_compliance
 from aliyun_project.nist_mapping import generate_nist_control_report
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -17,6 +18,7 @@ DEFAULT_CHECKS_FILE = PROJECT_ROOT / "rules" / "checks" / "alibabacloud_all_chec
 DEFAULT_NIST_MAPPING_FILE = (
     PROJECT_ROOT / "rules" / "mappings" / "nist_800_53_rev5_alibabacloud.json"
 )
+DEFAULT_CONTINUOUS_DIR = DEFAULT_OUTPUT_DIR / "continuous"
 
 
 def _load_env_file(env_path: Path) -> None:
@@ -182,6 +184,17 @@ def _map_nist(args: argparse.Namespace) -> int:
         print(str(exc), file=sys.stderr)
         return 1
 
+    continuous_result = None
+    if not args.skip_continuous:
+        try:
+            continuous_result = update_continuous_compliance(
+                summary_csv=result.summary_csv,
+                continuous_dir=args.continuous_dir.resolve(),
+            )
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+
     print(f"Source report: {result.source_csv}")
     print(f"NIST summary CSV: {result.summary_csv}")
     print(f"NIST details CSV: {result.details_csv}")
@@ -201,6 +214,17 @@ def _map_nist(args: argparse.Namespace) -> int:
         print("\nTop controls by FAIL count:")
         for control_id, fail_count in result.top_failed_controls:
             print(f"  {control_id}: {fail_count}")
+
+    if continuous_result:
+        print("\nContinuous compliance:")
+        print(f"  Snapshot: {continuous_result.snapshot_json}")
+        print(f"  Diff CSV: {continuous_result.diff_csv}")
+        print(f"  Diff JSON: {continuous_result.diff_json}")
+        print(f"  Trend CSV: {continuous_result.trend_csv}")
+        print(f"  Compared with: {continuous_result.compared_with_snapshot or 'N/A (first run)'}")
+        print(f"  New FAIL controls: {continuous_result.new_fail_count}")
+        print(f"  Fixed controls: {continuous_result.fixed_count}")
+        print(f"  Other status changes: {continuous_result.status_changed_count}")
 
     return 0
 
@@ -250,6 +274,12 @@ def _parser() -> argparse.ArgumentParser:
     nist.add_argument("--file", help="Path to a specific scan/compliance CSV")
     nist.add_argument("--mapping-file", type=Path, default=DEFAULT_NIST_MAPPING_FILE)
     nist.add_argument("--report-dir", type=Path, default=DEFAULT_OUTPUT_DIR / "nist")
+    nist.add_argument("--continuous-dir", type=Path, default=DEFAULT_CONTINUOUS_DIR)
+    nist.add_argument(
+        "--skip-continuous",
+        action="store_true",
+        help="Skip continuous compliance snapshot/diff generation.",
+    )
     nist.add_argument("--top", type=int, default=10)
 
     return parser

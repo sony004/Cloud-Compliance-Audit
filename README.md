@@ -12,6 +12,7 @@
 - `src/aliyun_project/cli.py`: 主 CLI（`scan` / `summary` / `nist-map`）
 - `src/aliyun_project/sync_rules.py`: 从 Prowler 同步 checks/compliance 规则
 - `src/aliyun_project/nist_mapping.py`: NIST 控制项映射与聚合逻辑
+- `src/aliyun_project/continuous_compliance.py`: 持续合规快照、差异分析与趋势输出
 - `rules/compliance/alibabacloud/*.json`: 本地合规基线规则
 - `rules/checks/*.json`: 本地检查项集合
 - `rules/mappings/nist_800_53_rev5_alibabacloud.json`: NIST 映射规则库
@@ -121,18 +122,32 @@ aliyun-audit nist-map `
   --report-dir output/nist
 ```
 
+自定义持续合规输出目录：
+
+```powershell
+aliyun-audit nist-map `
+  --report-dir output/nist `
+  --continuous-dir output/continuous
+```
+
 输出文件：
 - `output/nist/*_nist80053_control_summary.csv`
 - `output/nist/*_nist80053_control_details.csv`
 - `output/nist/*_nist80053_control_summary.json`
 - `output/nist/*_nist80053_evidence_manifest.json`
 - `output/nist/*_nist80053_control_evidence_index.csv`
+- `output/continuous/*_control_diff.csv`
+- `output/continuous/*_control_diff.json`
+- `output/continuous/snapshots/*_control_snapshot.json`
+- `output/continuous/control_trend.csv`
 
 说明：
 - 当前仅实现控制项映射与证据聚合，不包含风险评分模型
 - 映射规则可在 `rules/mappings/nist_800_53_rev5_alibabacloud.json` 持续扩展
 - `details.csv` 中包含 `EVIDENCE_ID`，可追溯到 `evidence_manifest.json` 中的原始证据条目
 - `evidence_manifest.json` 为每条证据生成 `payload_sha256` 和链式哈希（`chain_prev_hash`/`chain_hash`），用于完整性校验
+- `nist-map` 默认会同时生成持续合规产物（快照、与上一轮对比、趋势）
+- 如需仅生成 NIST 映射结果，可使用 `--skip-continuous`
 
 ## 5) Sync Local Rules from Prowler
 
