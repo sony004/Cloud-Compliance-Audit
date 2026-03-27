@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -13,10 +15,13 @@ class NistMapResult:
     summary_csv: Path
     details_csv: Path
     summary_json: Path
+    evidence_manifest_json: Path
+    control_evidence_index_csv: Path
     total_rows: int
     mapped_rows: int
     unmapped_rows: int
     control_count: int
+    evidence_count: int
     status_counts: dict[str, int]
     top_failed_controls: list[tuple[str, int]]
 
@@ -63,6 +68,58 @@ def _build_evidence(row: dict[str, str], evidence_keys: list[str]) -> str:
     return " | ".join(chunks)
 
 
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _build_evidence_record(
+    row: dict[str, str],
+    check_id: str,
+    status: str,
+    evidence: str,
+    source_csv: Path,
+    mapping_file: Path,
+    collected_at: str,
+) -> dict[str, str]:
+    resource_uid = (row.get("RESOURCE_UID") or row.get("RESOURCEID") or "").strip()
+    resource_name = (row.get("RESOURCE_NAME") or row.get("RESOURCENAME") or "").strip()
+    region = (row.get("REGION") or "").strip()
+    timestamp = (row.get("TIMESTAMP") or row.get("ASSESSMENTDATE") or "").strip()
+    finding_uid = (row.get("FINDING_UID") or "").strip()
+
+    canonical_payload = {
+        "check_id": check_id,
+        "status": status,
+        "resource_uid": resource_uid,
+        "resource_name": resource_name,
+        "region": region,
+        "timestamp": timestamp,
+        "finding_uid": finding_uid,
+        "evidence": evidence,
+        "source_csv": str(source_csv),
+    }
+    payload_json = json.dumps(canonical_payload, sort_keys=True, separators=(",", ":"))
+    evidence_id = _sha256_text(payload_json)
+
+    return {
+        "evidence_id": evidence_id,
+        "source_csv": str(source_csv),
+        "mapping_file": str(mapping_file),
+        "collector_version": "nist-map-v1",
+        "collected_at_utc": collected_at,
+        "check_id": check_id,
+        "status": status,
+        "resource_uid": resource_uid,
+        "resource_name": resource_name,
+        "region": region,
+        "timestamp": timestamp,
+        "finding_uid": finding_uid,
+        "evidence": evidence,
+        "evidence_sha256": _sha256_text(evidence),
+        "payload_sha256": _sha256_text(payload_json),
+    }
+
+
 def generate_nist_control_report(
     source_csv: Path,
     mapping_file: Path,
@@ -81,9 +138,12 @@ def generate_nist_control_report(
     control_status_counts: dict[str, Counter] = defaultdict(Counter)
     control_check_ids: dict[str, set[str]] = defaultdict(set)
     control_strengths: dict[str, set[str]] = defaultdict(set)
+    control_evidence_ids: dict[str, set[str]] = defaultdict(set)
+    evidence_records: dict[str, dict[str, str]] = {}
     mapped_rows = 0
     unmapped_rows = 0
     status_counts: Counter = Counter()
+    collected_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
     for row in rows:
         check_id = _resolve_check_id(row)
@@ -108,12 +168,24 @@ def generate_nist_control_report(
         evidence = _build_evidence(row, evidence_keys)
         mapping_strength = mapping.get("mapping_strength", "partial")
         rationale = mapping.get("rationale", "")
+        evidence_record = _build_evidence_record(
+            row=row,
+            check_id=check_id,
+            status=status,
+            evidence=evidence,
+            source_csv=source_csv,
+            mapping_file=mapping_file,
+            collected_at=collected_at,
+        )
+        evidence_id = evidence_record["evidence_id"]
+        evidence_records[evidence_id] = evidence_record
 
         for idx, control_id in enumerate(controls):
             control_name = control_catalog.get(control_id, "Unknown control")
             control_status_counts[control_id][status] += 1
             control_check_ids[control_id].add(check_id)
             control_strengths[control_id].add(mapping_strength)
+            control_evidence_ids[control_id].add(evidence_id)
 
             details.append(
                 {
@@ -128,6 +200,7 @@ def generate_nist_control_report(
                     "REGION": (row.get("REGION") or "").strip(),
                     "TIMESTAMP": (row.get("TIMESTAMP") or row.get("ASSESSMENTDATE") or "").strip(),
                     "RATIONALE": rationale,
+                    "EVIDENCE_ID": evidence_id,
                     "EVIDENCE": evidence,
                 }
             )
@@ -155,6 +228,8 @@ def generate_nist_control_report(
     summary_csv = report_dir / f"{stem}_nist80053_control_summary.csv"
     details_csv = report_dir / f"{stem}_nist80053_control_details.csv"
     summary_json = report_dir / f"{stem}_nist80053_control_summary.json"
+    evidence_manifest_json = report_dir / f"{stem}_nist80053_evidence_manifest.json"
+    control_evidence_index_csv = report_dir / f"{stem}_nist80053_control_evidence_index.csv"
 
     with summary_csv.open("w", encoding="utf-8", newline="") as fp:
         writer = csv.DictWriter(
@@ -190,12 +265,45 @@ def generate_nist_control_report(
                 "REGION",
                 "TIMESTAMP",
                 "RATIONALE",
+                "EVIDENCE_ID",
                 "EVIDENCE",
             ],
             delimiter=";",
         )
         writer.writeheader()
         writer.writerows(details)
+
+    control_evidence_rows: list[dict[str, str]] = []
+    for control_id in sorted(control_evidence_ids):
+        evidence_ids = sorted(control_evidence_ids[control_id])
+        control_evidence_rows.append(
+            {
+                "CONTROL_ID": control_id,
+                "CONTROL_NAME": control_catalog.get(control_id, "Unknown control"),
+                "EVIDENCE_COUNT": str(len(evidence_ids)),
+                "EVIDENCE_IDS": ", ".join(evidence_ids),
+            }
+        )
+
+    with control_evidence_index_csv.open("w", encoding="utf-8", newline="") as fp:
+        writer = csv.DictWriter(
+            fp,
+            fieldnames=["CONTROL_ID", "CONTROL_NAME", "EVIDENCE_COUNT", "EVIDENCE_IDS"],
+            delimiter=";",
+        )
+        writer.writeheader()
+        writer.writerows(control_evidence_rows)
+
+    ordered_evidence = []
+    previous_chain_hash = "GENESIS"
+    for evidence_id in sorted(evidence_records):
+        record = dict(evidence_records[evidence_id])
+        chain_input = f"{previous_chain_hash}|{record['payload_sha256']}"
+        chain_hash = _sha256_text(chain_input)
+        record["chain_prev_hash"] = previous_chain_hash
+        record["chain_hash"] = chain_hash
+        ordered_evidence.append(record)
+        previous_chain_hash = chain_hash
 
     failed_controls = sorted(
         (
@@ -217,6 +325,7 @@ def generate_nist_control_report(
         "mapped_rows": mapped_rows,
         "unmapped_rows": unmapped_rows,
         "control_count": len(summary_rows),
+        "evidence_count": len(ordered_evidence),
         "status_counts": dict(status_counts),
         "top_failed_controls": [
             {
@@ -229,15 +338,32 @@ def generate_nist_control_report(
     }
     summary_json.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
+    evidence_manifest_payload = {
+        "framework": mapping_doc.get("framework"),
+        "framework_version": mapping_doc.get("framework_version"),
+        "provider": mapping_doc.get("provider"),
+        "source_csv": str(source_csv),
+        "mapping_file": str(mapping_file),
+        "collected_at_utc": collected_at,
+        "collector_version": "nist-map-v1",
+        "evidence_count": len(ordered_evidence),
+        "chain_root_hash": previous_chain_hash,
+        "records": ordered_evidence,
+    }
+    evidence_manifest_json.write_text(json.dumps(evidence_manifest_payload, indent=2), encoding="utf-8")
+
     return NistMapResult(
         source_csv=source_csv,
         summary_csv=summary_csv,
         details_csv=details_csv,
         summary_json=summary_json,
+        evidence_manifest_json=evidence_manifest_json,
+        control_evidence_index_csv=control_evidence_index_csv,
         total_rows=len(rows),
         mapped_rows=mapped_rows,
         unmapped_rows=unmapped_rows,
         control_count=len(summary_rows),
+        evidence_count=len(ordered_evidence),
         status_counts=dict(status_counts),
         top_failed_controls=failed_controls[:top],
     )

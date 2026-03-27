@@ -186,10 +186,13 @@ def _map_nist(args: argparse.Namespace) -> int:
     print(f"NIST summary CSV: {result.summary_csv}")
     print(f"NIST details CSV: {result.details_csv}")
     print(f"NIST summary JSON: {result.summary_json}")
+    print(f"Evidence manifest JSON: {result.evidence_manifest_json}")
+    print(f"Control-evidence index CSV: {result.control_evidence_index_csv}")
     print(f"Rows: {result.total_rows}")
     print(f"Mapped rows: {result.mapped_rows}")
     print(f"Unmapped rows: {result.unmapped_rows}")
     print(f"Mapped controls: {result.control_count}")
+    print(f"Evidence records: {result.evidence_count}")
     print("Status counts:")
     for status in sorted(result.status_counts):
         print(f"  {status}: {result.status_counts[status]}")

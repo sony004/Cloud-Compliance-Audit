@@ -125,10 +125,14 @@ aliyun-audit nist-map `
 - `output/nist/*_nist80053_control_summary.csv`
 - `output/nist/*_nist80053_control_details.csv`
 - `output/nist/*_nist80053_control_summary.json`
+- `output/nist/*_nist80053_evidence_manifest.json`
+- `output/nist/*_nist80053_control_evidence_index.csv`
 
 说明：
 - 当前仅实现控制项映射与证据聚合，不包含风险评分模型
 - 映射规则可在 `rules/mappings/nist_800_53_rev5_alibabacloud.json` 持续扩展
+- `details.csv` 中包含 `EVIDENCE_ID`，可追溯到 `evidence_manifest.json` 中的原始证据条目
+- `evidence_manifest.json` 为每条证据生成 `payload_sha256` 和链式哈希（`chain_prev_hash`/`chain_hash`），用于完整性校验
 
 ## 5) Sync Local Rules from Prowler
 
