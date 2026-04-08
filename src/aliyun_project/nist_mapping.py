@@ -6,7 +6,9 @@ import json
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from html import escape
 from pathlib import Path
+from uuid import uuid4
 
 
 @dataclass
@@ -15,6 +17,8 @@ class NistMapResult:
     summary_csv: Path
     details_csv: Path
     summary_json: Path
+    oscal_json: Path
+    report_html: Path
     evidence_manifest_json: Path
     control_evidence_index_csv: Path
     total_rows: int
@@ -66,6 +70,168 @@ def _build_evidence(row: dict[str, str], evidence_keys: list[str]) -> str:
         if value:
             chunks.append(f"{key}={value}")
     return " | ".join(chunks)
+
+
+def _write_html_report(
+    output_path: Path,
+    summary_rows: list[dict[str, str]],
+    payload: dict,
+    source_csv: Path,
+    mapping_file: Path,
+) -> None:
+    rows_html = "".join(
+        (
+            "<tr>"
+            f"<td>{escape(row['CONTROL_ID'])}</td>"
+            f"<td>{escape(row['CONTROL_NAME'])}</td>"
+            f"<td>{escape(row['TOTAL'])}</td>"
+            f"<td>{escape(row['PASS'])}</td>"
+            f"<td>{escape(row['FAIL'])}</td>"
+            f"<td>{escape(row['MANUAL'])}</td>"
+            f"<td>{escape(row['UNKNOWN'])}</td>"
+            f"<td>{escape(row['CHECK_IDS'])}</td>"
+            "</tr>"
+        )
+        for row in summary_rows
+    )
+
+    html = f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>NIST 800-53 Control Report</title>
+  <style>
+    body {{ font-family: Arial, sans-serif; margin: 24px; color: #1f2937; }}
+    h1, h2 {{ margin-bottom: 8px; }}
+    .meta {{ margin-bottom: 16px; }}
+    .meta p {{ margin: 2px 0; }}
+    table {{ border-collapse: collapse; width: 100%; margin-top: 12px; }}
+    th, td {{ border: 1px solid #d1d5db; padding: 8px; font-size: 13px; }}
+    th {{ background: #f3f4f6; text-align: left; }}
+    .fail {{ color: #b91c1c; font-weight: 600; }}
+  </style>
+</head>
+<body>
+  <h1>NIST SP 800-53 Mapping Report</h1>
+  <div class="meta">
+    <p><strong>Source CSV:</strong> {escape(str(source_csv))}</p>
+    <p><strong>Mapping File:</strong> {escape(str(mapping_file))}</p>
+    <p><strong>Total Rows:</strong> {payload["total_rows"]}</p>
+    <p><strong>Mapped Rows:</strong> {payload["mapped_rows"]}</p>
+    <p><strong>Unmapped Rows:</strong> {payload["unmapped_rows"]}</p>
+    <p><strong>Mapped Controls:</strong> {payload["control_count"]}</p>
+  </div>
+  <h2>Control Summary</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>CONTROL_ID</th>
+        <th>CONTROL_NAME</th>
+        <th>TOTAL</th>
+        <th>PASS</th>
+        <th>FAIL</th>
+        <th>MANUAL</th>
+        <th>UNKNOWN</th>
+        <th>CHECK_IDS</th>
+      </tr>
+    </thead>
+    <tbody>
+      {rows_html}
+    </tbody>
+  </table>
+</body>
+</html>
+"""
+    output_path.write_text(html, encoding="utf-8")
+
+
+def _build_oscal_assessment_results(
+    framework: str | None,
+    framework_version: str | None,
+    provider: str | None,
+    source_csv: Path,
+    mapping_file: Path,
+    collected_at: str,
+    summary_rows: list[dict[str, str]],
+    details: list[dict[str, str]],
+) -> dict:
+    observations = []
+    for row in details:
+        observations.append(
+            {
+                "uuid": str(uuid4()),
+                "title": f"{row['CONTROL_ID']}::{row['CHECK_ID']}",
+                "description": row["EVIDENCE"],
+                "methods": ["EXAMINE"],
+                "subjects": [{"subject-uuid": str(uuid4()), "type": "resource"}],
+                "collected": row["TIMESTAMP"] or collected_at,
+                "relevant-evidence": [
+                    {
+                        "description": row["EVIDENCE"],
+                        "href": f"urn:evidence:id:{row['EVIDENCE_ID']}",
+                    }
+                ],
+                "props": [
+                    {"name": "control-id", "value": row["CONTROL_ID"]},
+                    {"name": "check-id", "value": row["CHECK_ID"]},
+                    {"name": "status", "value": row["STATUS"]},
+                    {"name": "resource-uid", "value": row["RESOURCE_UID"]},
+                    {"name": "region", "value": row["REGION"]},
+                ],
+            }
+        )
+
+    findings = []
+    for row in summary_rows:
+        findings.append(
+            {
+                "uuid": str(uuid4()),
+                "title": f"{row['CONTROL_ID']} - {row['CONTROL_NAME']}",
+                "description": (
+                    f"PASS={row['PASS']}, FAIL={row['FAIL']}, "
+                    f"MANUAL={row['MANUAL']}, UNKNOWN={row['UNKNOWN']}"
+                ),
+                "target": {"target-id": row["CONTROL_ID"], "type": "control"},
+                "implementation-statement-uuid": str(uuid4()),
+                "props": [
+                    {"name": "total", "value": row["TOTAL"]},
+                    {"name": "check-ids", "value": row["CHECK_IDS"]},
+                ],
+            }
+        )
+
+    return {
+        "assessment-results": {
+            "uuid": str(uuid4()),
+            "metadata": {
+                "title": f"{framework or 'NIST'} Automated Assessment Results",
+                "last-modified": collected_at,
+                "version": framework_version or "unknown",
+                "oscal-version": "1.1.2",
+                "remarks": (
+                    "Generated from Prowler AlibabaCloud scan and mapped to "
+                    "NIST SP 800-53 controls."
+                ),
+                "props": [
+                    {"name": "provider", "value": provider or "unknown"},
+                    {"name": "source-csv", "value": str(source_csv)},
+                    {"name": "mapping-file", "value": str(mapping_file)},
+                ],
+            },
+            "import-ap": {"href": "urn:framework:nist-sp-800-53-rev5"},
+            "results": [
+                {
+                    "uuid": str(uuid4()),
+                    "title": "Automated Control Mapping Result",
+                    "description": "Control findings mapped from cloud configuration checks.",
+                    "start": collected_at,
+                    "end": collected_at,
+                    "findings": findings,
+                    "observations": observations,
+                }
+            ],
+        }
+    }
 
 
 def _sha256_text(value: str) -> str:
@@ -228,6 +394,8 @@ def generate_nist_control_report(
     summary_csv = report_dir / f"{stem}_nist80053_control_summary.csv"
     details_csv = report_dir / f"{stem}_nist80053_control_details.csv"
     summary_json = report_dir / f"{stem}_nist80053_control_summary.json"
+    oscal_json = report_dir / f"{stem}_nist80053_assessment-results.oscal.json"
+    report_html = report_dir / f"{stem}_nist80053_control_report.html"
     evidence_manifest_json = report_dir / f"{stem}_nist80053_evidence_manifest.json"
     control_evidence_index_csv = report_dir / f"{stem}_nist80053_control_evidence_index.csv"
 
@@ -338,6 +506,26 @@ def generate_nist_control_report(
     }
     summary_json.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
+    oscal_payload = _build_oscal_assessment_results(
+        framework=mapping_doc.get("framework"),
+        framework_version=mapping_doc.get("framework_version"),
+        provider=mapping_doc.get("provider"),
+        source_csv=source_csv,
+        mapping_file=mapping_file,
+        collected_at=collected_at,
+        summary_rows=summary_rows,
+        details=details,
+    )
+    oscal_json.write_text(json.dumps(oscal_payload, indent=2), encoding="utf-8")
+
+    _write_html_report(
+        output_path=report_html,
+        summary_rows=summary_rows,
+        payload=payload,
+        source_csv=source_csv,
+        mapping_file=mapping_file,
+    )
+
     evidence_manifest_payload = {
         "framework": mapping_doc.get("framework"),
         "framework_version": mapping_doc.get("framework_version"),
@@ -357,6 +545,8 @@ def generate_nist_control_report(
         summary_csv=summary_csv,
         details_csv=details_csv,
         summary_json=summary_json,
+        oscal_json=oscal_json,
+        report_html=report_html,
         evidence_manifest_json=evidence_manifest_json,
         control_evidence_index_csv=control_evidence_index_csv,
         total_rows=len(rows),

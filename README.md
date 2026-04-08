@@ -133,7 +133,9 @@ aliyun-audit nist-map `
 输出文件：
 - `output/nist/*_nist80053_control_summary.csv`
 - `output/nist/*_nist80053_control_details.csv`
+- `output/nist/*_nist80053_control_report.html`
 - `output/nist/*_nist80053_control_summary.json`
+- `output/nist/*_nist80053_assessment-results.oscal.json`
 - `output/nist/*_nist80053_evidence_manifest.json`
 - `output/nist/*_nist80053_control_evidence_index.csv`
 - `output/continuous/*_control_diff.csv`
