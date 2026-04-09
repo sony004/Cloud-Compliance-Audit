@@ -9,7 +9,9 @@ from collections import Counter
 from pathlib import Path
 
 from aliyun_project.continuous_compliance import update_continuous_compliance
+from aliyun_project.evidence_tamper_experiment import run_tamper_experiment
 from aliyun_project.nist_mapping import generate_nist_control_report
+from aliyun_project.verify_evidence_chain import verify_manifest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "output"
@@ -19,6 +21,8 @@ DEFAULT_NIST_MAPPING_FILE = (
     PROJECT_ROOT / "rules" / "mappings" / "nist_800_53_rev5_alibabacloud.json"
 )
 DEFAULT_CONTINUOUS_DIR = DEFAULT_OUTPUT_DIR / "continuous"
+DEFAULT_NIST_DIR = DEFAULT_OUTPUT_DIR / "nist"
+DEFAULT_TAMPER_REPORT_DIR = DEFAULT_OUTPUT_DIR / "analysis" / "evidence_tamper"
 
 
 def _load_env_file(env_path: Path) -> None:
@@ -231,6 +235,66 @@ def _map_nist(args: argparse.Namespace) -> int:
     return 0
 
 
+def _latest_evidence_manifest(nist_dir: Path) -> Path | None:
+    if not nist_dir.exists():
+        return None
+
+    candidates = sorted(
+        nist_dir.glob("*_nist80053_evidence_manifest.json"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    return candidates[0] if candidates else None
+
+
+def _verify_evidence(args: argparse.Namespace) -> int:
+    manifest_path = Path(args.file) if args.file else _latest_evidence_manifest(args.nist_dir)
+    if not manifest_path or not manifest_path.exists():
+        print("No evidence manifest found. Pass --file or run nist-map first.", file=sys.stderr)
+        return 1
+
+    result = verify_manifest(manifest_path.resolve())
+    print(f"Manifest: {result.manifest_path}")
+    print(f"Records: {result.records}")
+    print(f"Payload mismatches: {result.payload_mismatch}")
+    print(f"Chain mismatches: {result.chain_mismatch}")
+    print(f"Computed root: {result.computed_root}")
+    print(f"Stored root: {result.stored_root}")
+    print(f"Root match: {result.root_match}")
+
+    return 0 if result.payload_mismatch == 0 and result.chain_mismatch == 0 and result.root_match else 2
+
+
+def _tamper_evidence(args: argparse.Namespace) -> int:
+    manifest_path = Path(args.file) if args.file else _latest_evidence_manifest(args.nist_dir)
+    if not manifest_path or not manifest_path.exists():
+        print("No evidence manifest found. Pass --file or run nist-map first.", file=sys.stderr)
+        return 1
+
+    try:
+        result = run_tamper_experiment(
+            manifest_path=manifest_path.resolve(),
+            report_dir=args.report_dir.resolve(),
+            from_status="FAIL",
+            to_status="PASS",
+        )
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    print(f"Manifest: {result.manifest_path}")
+    print(f"Tampered record index: {result.tampered_index}")
+    print(f"Evidence ID: {result.evidence_id}")
+    print(f"Status change: {result.before_status} -> {result.after_status}")
+    print(f"Before root match: {result.before_root_match}")
+    print(f"After root match: {result.after_root_match}")
+    print(f"After payload mismatch: {result.after_payload_mismatch}")
+    print(f"After chain mismatch: {result.after_chain_mismatch}")
+    print(f"Rollback done: {result.rollback_done}")
+    print(f"Report: {result.report_path}")
+    return 0
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="aliyun-audit",
@@ -284,6 +348,21 @@ def _parser() -> argparse.ArgumentParser:
     )
     nist.add_argument("--top", type=int, default=10)
 
+    verify = subparsers.add_parser(
+        "verify-evidence",
+        help="Verify payload/hash-chain integrity for latest or specific evidence manifest",
+    )
+    verify.add_argument("--file", type=Path, help="Path to specific evidence manifest JSON")
+    verify.add_argument("--nist-dir", type=Path, default=DEFAULT_NIST_DIR)
+
+    tamper = subparsers.add_parser(
+        "tamper-evidence",
+        help="Inject FAIL->PASS tamper into evidence manifest, verify effect, and auto-rollback",
+    )
+    tamper.add_argument("--file", type=Path, help="Path to specific evidence manifest JSON")
+    tamper.add_argument("--nist-dir", type=Path, default=DEFAULT_NIST_DIR)
+    tamper.add_argument("--report-dir", type=Path, default=DEFAULT_TAMPER_REPORT_DIR)
+
     return parser
 
 
@@ -301,6 +380,12 @@ def main() -> int:
 
     if args.command == "nist-map":
         return _map_nist(args)
+
+    if args.command == "verify-evidence":
+        return _verify_evidence(args)
+
+    if args.command == "tamper-evidence":
+        return _tamper_evidence(args)
 
     parser.print_help()
     return 1

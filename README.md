@@ -151,6 +151,41 @@ aliyun-audit nist-map `
 - `nist-map` 默认会同时生成持续合规产物（快照、与上一轮对比、趋势）
 - 如需仅生成 NIST 映射结果，可使用 `--skip-continuous`
 
+## 4.1) Verify Evidence Chain Integrity
+
+验证最新证据链清单：
+
+```powershell
+aliyun-audit verify-evidence
+```
+
+验证指定证据清单：
+
+```powershell
+aliyun-audit verify-evidence --file output/nist/<your_manifest>.json
+```
+
+返回码说明：
+- `0`：校验通过（payload 与链根一致）
+- `2`：存在篡改/不一致（payload 或链值异常）
+
+## 4.2) Tamper Experiment (FAIL -> PASS with Auto-Rollback)
+
+注入一条 `FAIL -> PASS` 篡改并自动回滚：
+
+```powershell
+aliyun-audit tamper-evidence
+```
+
+可指定证据清单文件：
+
+```powershell
+aliyun-audit tamper-evidence --file output/nist/<your_manifest>.json
+```
+
+实验报告输出目录（默认 `output/analysis/evidence_tamper`）：
+- `*_tamper_fail_to_pass_report.json`
+
 ## 5) Sync Local Rules from Prowler
 
 ```powershell
