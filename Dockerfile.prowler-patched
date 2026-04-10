@@ -1,0 +1,4 @@
+﻿FROM toniblyx/prowler:stable
+
+COPY patches/prowler/ecs_securitygroup_restrict_ssh_internet.py /home/prowler/prowler/providers/alibabacloud/services/ecs/ecs_securitygroup_restrict_ssh_internet/ecs_securitygroup_restrict_ssh_internet.py
+COPY patches/prowler/ecs_securitygroup_restrict_rdp_internet.py /home/prowler/prowler/providers/alibabacloud/services/ecs/ecs_securitygroup_restrict_rdp_internet/ecs_securitygroup_restrict_rdp_internet.py

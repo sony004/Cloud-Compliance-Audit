@@ -59,6 +59,21 @@ def _load_observed_check_ids(summary_csv: Path | None) -> set[str]:
     return observed
 
 
+def _load_observed_control_family_distribution(summary_csv: Path | None) -> dict[str, int]:
+    if not summary_csv or not summary_csv.exists():
+        return {}
+    family_distribution: dict[str, int] = defaultdict(int)
+    with summary_csv.open("r", encoding="utf-8", newline="") as fp:
+        reader = csv.DictReader(fp, delimiter=";")
+        for row in reader:
+            control_id = (row.get("CONTROL_ID") or "").strip()
+            if not control_id:
+                continue
+            family = control_id.split("-", 1)[0]
+            family_distribution[family] += 1
+    return dict(family_distribution)
+
+
 def _write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, str]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as fp:
@@ -234,6 +249,8 @@ def run(
     for control_id in control_to_checks:
         family = control_id.split("-", 1)[0]
         family_distribution[family] += 1
+    observed_family_distribution = _load_observed_control_family_distribution(nist_summary_csv)
+    chart_family_distribution = observed_family_distribution or dict(family_distribution)
 
     summary_rows = [
         {"metric": "total_checks", "value": str(total_checks)},
@@ -263,11 +280,11 @@ def run(
         ["control_family", "control_count"],
         [
             {"control_family": family, "control_count": str(count)}
-            for family, count in sorted(family_distribution.items())
+            for family, count in sorted(chart_family_distribution.items())
         ],
     )
 
-    charts = _build_visualizations(output_dir, mapped_count, unmapped_count, dict(family_distribution))
+    charts = _build_visualizations(output_dir, mapped_count, unmapped_count, chart_family_distribution)
     md_path = output_dir / "mapping_effect_summary.md"
     md = [
         "# Mapping Effect Summary",

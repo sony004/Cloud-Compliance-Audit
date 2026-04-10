@@ -4,7 +4,8 @@ param(
     [switch]$IgnoreExitCode3,
     [switch]$UseLocalChecks,
     [string]$Image = "toniblyx/prowler:stable",
-    [switch]$SkipNistMap
+    [switch]$SkipNistMap,
+    [string]$TargetInstanceId = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -18,6 +19,43 @@ if (-not (Test-Path ".env") -and (Test-Path ".env.example")) {
 
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     throw "Docker is not available in PATH."
+}
+
+function Export-TargetInstanceCsv {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$OutputDir,
+        [Parameter(Mandatory = $true)]
+        [string]$InstanceId
+    )
+    $latestCsv = Get-ChildItem $OutputDir -Filter "prowler-output-*.csv" -File |
+        Where-Object { $_.BaseName -notlike "*_alibabacloud" } |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
+
+    if (-not $latestCsv) {
+        Write-Warning "No scan CSV found under $OutputDir, skipping instance filter."
+        return $null
+    }
+
+    $allRows = Import-Csv $latestCsv.FullName -Delimiter ';'
+    $filteredRows = $allRows | Where-Object {
+        $_.RESOURCEID -eq $InstanceId -or ($_.RESOURCE_UID -like "*$InstanceId*")
+    }
+
+    $safeInstanceId = ($InstanceId -replace "[^A-Za-z0-9_-]", "_")
+    $targetCsv = Join-Path $OutputDir ($latestCsv.BaseName + "_instance_" + $safeInstanceId + ".csv")
+
+    if (($filteredRows | Measure-Object).Count -eq 0) {
+        Write-Warning "Target instance '$InstanceId' not found in $($latestCsv.Name). Exporting header-only CSV."
+        $allRows | Select-Object -First 0 | Export-Csv $targetCsv -NoTypeInformation -Encoding UTF8 -Delimiter ';'
+        return $targetCsv
+    }
+
+    $filteredRows | Export-Csv $targetCsv -NoTypeInformation -Encoding UTF8 -Delimiter ';'
+    Write-Host "Target instance filter applied: $InstanceId"
+    Write-Host "Filtered CSV: $targetCsv"
+    return $targetCsv
 }
 
 $scanArgs = @("alibabacloud", "--region") + $Region
@@ -39,6 +77,11 @@ $dockerArgs = @(
 $scanExitCode = $LASTEXITCODE
 
 if (-not $SkipNistMap -and ($scanExitCode -eq 0 -or $scanExitCode -eq 3)) {
+    $targetMapCsv = $null
+    if ($TargetInstanceId) {
+        $targetMapCsv = Export-TargetInstanceCsv -OutputDir (Join-Path $PSScriptRoot "output") -InstanceId $TargetInstanceId
+    }
+
     Write-Host "Running NIST SP 800-53 mapping..."
 
     $mapArgs = @(
@@ -52,6 +95,10 @@ if (-not $SkipNistMap -and ($scanExitCode -eq 0 -or $scanExitCode -eq 3)) {
         "--output-dir", "/scan/output",
         "--report-dir", "/scan/output/nist"
     )
+    if ($targetMapCsv) {
+        $targetMapCsvName = [System.IO.Path]::GetFileName($targetMapCsv)
+        $mapArgs += @("--file", "/scan/output/$targetMapCsvName")
+    }
 
     & docker @mapArgs
     if ($LASTEXITCODE -ne 0) {

@@ -43,6 +43,23 @@ def _normalize_status(raw: str | None) -> str:
     return status if status in {"PASS", "FAIL", "MANUAL"} else "UNKNOWN"
 
 
+def _control_final_status(
+    pass_count: int,
+    fail_count: int,
+    manual_count: int,
+    unknown_count: int,
+) -> str:
+    if fail_count > 0:
+        return "FAIL"
+    if manual_count > 0:
+        return "MANUAL"
+    if unknown_count > 0:
+        return "UNKNOWN"
+    if pass_count > 0:
+        return "PASS"
+    return "UNKNOWN"
+
+
 def _resolve_check_id(row: dict[str, str]) -> str:
     return (row.get("CHECK_ID") or row.get("CHECKID") or "").strip()
 
@@ -89,6 +106,7 @@ def _write_html_report(
             f"<td>{escape(row['FAIL'])}</td>"
             f"<td>{escape(row['MANUAL'])}</td>"
             f"<td>{escape(row['UNKNOWN'])}</td>"
+            f"<td>{escape(row['FINAL_STATUS'])}</td>"
             f"<td>{escape(row['CHECK_IDS'])}</td>"
             "</tr>"
         )
@@ -132,6 +150,7 @@ def _write_html_report(
         <th>FAIL</th>
         <th>MANUAL</th>
         <th>UNKNOWN</th>
+        <th>FINAL_STATUS</th>
         <th>CHECK_IDS</th>
       </tr>
     </thead>
@@ -189,13 +208,15 @@ def _build_oscal_assessment_results(
                 "title": f"{row['CONTROL_ID']} - {row['CONTROL_NAME']}",
                 "description": (
                     f"PASS={row['PASS']}, FAIL={row['FAIL']}, "
-                    f"MANUAL={row['MANUAL']}, UNKNOWN={row['UNKNOWN']}"
+                    f"MANUAL={row['MANUAL']}, UNKNOWN={row['UNKNOWN']}, "
+                    f"FINAL_STATUS={row['FINAL_STATUS']}"
                 ),
                 "target": {"target-id": row["CONTROL_ID"], "type": "control"},
                 "implementation-statement-uuid": str(uuid4()),
                 "props": [
                     {"name": "total", "value": row["TOTAL"]},
                     {"name": "check-ids", "value": row["CHECK_IDS"]},
+                    {"name": "final-status", "value": row["FINAL_STATUS"]},
                 ],
             }
         )
@@ -375,15 +396,25 @@ def generate_nist_control_report(
     for control_id in sorted(control_status_counts):
         counts = control_status_counts[control_id]
         total = sum(counts.values())
+        pass_count = counts.get("PASS", 0)
+        fail_count = counts.get("FAIL", 0)
+        manual_count = counts.get("MANUAL", 0)
+        unknown_count = counts.get("UNKNOWN", 0)
         summary_rows.append(
             {
                 "CONTROL_ID": control_id,
                 "CONTROL_NAME": control_catalog.get(control_id, "Unknown control"),
                 "TOTAL": str(total),
-                "PASS": str(counts.get("PASS", 0)),
-                "FAIL": str(counts.get("FAIL", 0)),
-                "MANUAL": str(counts.get("MANUAL", 0)),
-                "UNKNOWN": str(counts.get("UNKNOWN", 0)),
+                "PASS": str(pass_count),
+                "FAIL": str(fail_count),
+                "MANUAL": str(manual_count),
+                "UNKNOWN": str(unknown_count),
+                "FINAL_STATUS": _control_final_status(
+                    pass_count=pass_count,
+                    fail_count=fail_count,
+                    manual_count=manual_count,
+                    unknown_count=unknown_count,
+                ),
                 "MAPPING_STRENGTHS": ", ".join(sorted(control_strengths[control_id])),
                 "CHECK_IDS": ", ".join(sorted(control_check_ids[control_id])),
             }
@@ -410,6 +441,7 @@ def generate_nist_control_report(
                 "FAIL",
                 "MANUAL",
                 "UNKNOWN",
+                "FINAL_STATUS",
                 "MAPPING_STRENGTHS",
                 "CHECK_IDS",
             ],
