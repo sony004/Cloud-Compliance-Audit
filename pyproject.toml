@@ -9,6 +9,8 @@ packages = [{ include = "aliyun_project", from = "src" }]
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"
 prowler = "==5.21.0"
+pandas = "^2.2.2"
+matplotlib = "^3.9.2"
 
 [tool.poetry.scripts]
 aliyun-audit = "aliyun_project.cli:main"

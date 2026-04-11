@@ -227,6 +227,10 @@ def _map_nist(args: argparse.Namespace) -> int:
         print(f"  Diff CSV: {continuous_result.diff_csv}")
         print(f"  Diff JSON: {continuous_result.diff_json}")
         print(f"  Trend CSV: {continuous_result.trend_csv}")
+        if continuous_result.trend_chart_png:
+            print(f"  Trend chart: {continuous_result.trend_chart_png}")
+        else:
+            print("  Trend chart: skipped (pandas/matplotlib not available)")
         print(f"  Compared with: {continuous_result.compared_with_snapshot or 'N/A (first run)'}")
         print(f"  New FAIL controls: {continuous_result.new_fail_count}")
         print(f"  Fixed controls: {continuous_result.fixed_count}")

@@ -3,7 +3,8 @@ param(
     [string[]]$Region = @("cn-beijing"),
     [switch]$IgnoreExitCode3,
     [switch]$UseLocalChecks,
-    [string]$Image = "toniblyx/prowler:stable",
+    [string]$Image = "aliyun-prowler-patched:latest",
+    [switch]$BuildImage,
     [switch]$SkipNistMap,
     [string]$TargetInstanceId = ""
 )
@@ -19,6 +20,32 @@ if (-not (Test-Path ".env") -and (Test-Path ".env.example")) {
 
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     throw "Docker is not available in PATH."
+}
+
+function Test-DockerImageExists {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ImageName
+    )
+    & docker image inspect $ImageName *> $null
+    return ($LASTEXITCODE -eq 0)
+}
+
+function Build-PatchedImage {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ImageName
+    )
+    Write-Host "Building patched image: $ImageName"
+    & docker build -f Dockerfile.prowler-patched -t $ImageName .
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to build Docker image '$ImageName'."
+    }
+}
+
+$isDefaultPatchedImage = $Image -eq "aliyun-prowler-patched:latest"
+if ($BuildImage -or ($isDefaultPatchedImage -and -not (Test-DockerImageExists -ImageName $Image))) {
+    Build-PatchedImage -ImageName $Image
 }
 
 function Export-TargetInstanceCsv {
