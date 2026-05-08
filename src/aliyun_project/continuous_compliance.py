@@ -53,7 +53,7 @@ def _status_change_type(previous: str | None, current: str) -> str:
         return "unchanged"
     if previous != "FAIL" and current == "FAIL":
         return "new_fail"
-    if previous == "FAIL" and current != "FAIL":
+    if previous != "PASS" and current == "PASS":
         return "fixed"
     return "status_changed"
 
